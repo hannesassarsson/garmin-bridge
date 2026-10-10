@@ -45,15 +45,30 @@ select
   round((summary->>'aerobicTrainingEffect')::numeric, 1)             as aerobic_te,
   round((summary->>'anaerobicTrainingEffect')::numeric, 1)           as anaerobic_te,
   summary->>'trainingEffectLabel'                                    as training_effect_label,
-  round((details->'summaryDTO'->>'trainingStressScore')::numeric, 1) as tss,
-  round((details->'summaryDTO'->>'intensityFactor')::numeric, 2)     as intensity_factor,
+  round((details->'summaryDTO'->>'trainingStressScore')::numeric, 1) as tss,              -- only if Garmin provides it
+  round((details->'summaryDTO'->>'intensityFactor')::numeric, 2)     as intensity_factor, -- only if Garmin provides it
   (summary->>'hrTimeInZone_1')::numeric                              as hr_zone1_s,
   (summary->>'hrTimeInZone_2')::numeric                              as hr_zone2_s,
   (summary->>'hrTimeInZone_3')::numeric                              as hr_zone3_s,
   (summary->>'hrTimeInZone_4')::numeric                              as hr_zone4_s,
   (summary->>'hrTimeInZone_5')::numeric                              as hr_zone5_s,
   jsonb_array_length(coalesce(splits->'lapDTOs', '[]'::jsonb))       as lap_count,
-  details_synced_at is not null                                      as has_details
+  details_synced_at is not null                                      as has_details,
+  (details->'summaryDTO'->>'directWorkoutRpe')::numeric              as rpe,
+  (details->'summaryDTO'->>'directWorkoutFeel')::numeric             as feel,
+  (details->'summaryDTO'->>'recoveryHeartRate')::numeric             as recovery_hr,
+  round((details->'summaryDTO'->>'averageTemperature')::numeric, 1)  as avg_temperature_c,
+  round((details->'summaryDTO'->>'avgRespirationRate')::numeric, 1)  as avg_respiration,
+  (details->'summaryDTO'->>'differenceBodyBattery')::numeric         as body_battery_change,
+  round((details->'summaryDTO'->>'strideLength')::numeric)           as stride_length_cm,
+  round((details->'summaryDTO'->>'groundContactTime')::numeric)      as ground_contact_ms,
+  round((details->'summaryDTO'->>'verticalOscillation')::numeric, 1) as vertical_oscillation_cm,
+  case when summary->'activityType'->>'typeKey' like '%swimming%' and (summary->>'distance')::numeric > 0
+       then round((summary->>'movingDuration')::numeric / 60 / ((summary->>'distance')::numeric / 100), 2) end
+                                                                     as swim_pace_min_per_100m,
+  round((details->'summaryDTO'->>'averageSWOLF')::numeric)           as avg_swolf,
+  round((details->'summaryDTO'->>'averageStrokes')::numeric, 1)      as avg_strokes_per_length,
+  (details->'summaryDTO'->>'poolLength')::numeric                    as pool_length
 from public.activities;
 
 revoke all on public.activity_overview from anon, authenticated;

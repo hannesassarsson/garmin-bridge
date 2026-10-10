@@ -6,6 +6,10 @@ on:
     # Keeps a run at 06:17 Swedish time in winter too (GitHub cron is UTC only),
     # so last night's data is in before the morning check just before 07:00.
     - cron: "17 5 * * *" # 05:17 UTC (06:17 Swedish winter time)
+    # Evening runs so the day's sessions are in before the evening check just
+    # before 21:00 Swedish time: 20:17 local in summer and in winter time.
+    - cron: "17 18 * * *" # 18:17 UTC (20:17 Swedish summer time)
+    - cron: "17 19 * * *" # 19:17 UTC (20:17 Swedish winter time)
   workflow_dispatch:
     inputs:
       mode:

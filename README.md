@@ -10,6 +10,7 @@ A small, read-only FastAPI bridge for Garmin Connect.
 - `POST /sync?days=3` — store the last days' activities in Supabase and fill in missing details/laps (requires API key)
 - `POST /sync/backfill?start=0&limit=50` — store one page of the full activity history (requires API key)
 - `POST /sync/details?max_details=15` — fill in details/laps for stored activities (requires API key)
+- `POST /sync/health?offset=0&days=14` — store daily health data (sleep, HRV, daily summary, training readiness) going back from `offset` days ago (requires API key)
 - `GET /auth/status` — token storage status; never contacts Garmin, safe to call any time (requires API key)
 
 For the protected endpoints, send this HTTP header:
@@ -42,7 +43,7 @@ Free Supabase projects are paused after a week without activity; the bridge then
 
 Activities are stored in the Supabase table `activities` (`supabase/activities.sql`): the full Garmin JSON for each activity plus details and laps. The view `activity_overview` shows the most useful fields (sport, distance, duration, heart rate, power, training load, HR zones…) as plain columns for analysis.
 
-The GitHub Actions workflow `.github/workflows/garmin-sync.yml` runs the daily sync automatically every morning. To load the full history once, open **Actions → Garmin sync → Run workflow** and choose `backfill`. The workflow needs the repository secret `BRIDGE_API_KEY` (Settings → Secrets and variables → Actions). Sync requests are never retried automatically, and Garmin requests are spaced out (`SYNC_REQUEST_DELAY_SECONDS`, default 1 s).
+The GitHub Actions workflow `.github/workflows/garmin-sync.yml` runs the daily sync automatically every morning. Daily health data (sleep, HRV, resting heart rate, Body Battery, stress, training readiness) is stored in `daily_health` (`supabase/daily_health.sql`) with the view `health_overview`; the daily sync also refreshes the last 3 days. To load the full history once, open **Actions → Garmin sync → Run workflow** and choose `backfill` (activities) or `health` (health data). The workflow needs the repository secret `BRIDGE_API_KEY` (Settings → Secrets and variables → Actions). Sync requests are never retried automatically, and Garmin requests are spaced out (`SYNC_REQUEST_DELAY_SECONDS`, default 1 s).
 
 ## Tests
 

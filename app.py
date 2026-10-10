@@ -8,7 +8,7 @@ from threading import Lock
 from typing import Any
 
 from fastapi import Depends, FastAPI, Header, HTTPException
-from garminconnect import Garmin
+from garminconnect import Garmin, GarminConnectNotFoundError
 
 from activity_store import ActivityStoreError, SupabaseActivityStore
 from token_store import SupabaseTokenStore, TokenStoreError
@@ -254,6 +254,32 @@ def run_sync(work) -> dict[str, Any]:
         persist_tokens()
 
 
+def sync_health(client: Garmin, store: SupabaseActivityStore, end: date, days: int) -> dict[str, int]:
+    """Store sleep, HRV, daily summary and training readiness for `days` days ending at `end`."""
+    fetchers = {
+        "sleep": client.get_sleep_data,
+        "hrv": client.get_hrv_data,
+        "summary": client.get_user_summary,
+        "readiness": client.get_training_readiness,
+    }
+    days_with_data = 0
+    for offset in range(days):
+        day = (end - timedelta(days=offset)).isoformat()
+        data: dict[str, Any] = {}
+        for key, fetch in fetchers.items():
+            time.sleep(SYNC_REQUEST_DELAY_SECONDS)
+            try:
+                data[key] = fetch(day) or None
+            except GarminConnectNotFoundError:
+                data[key] = None  # no data recorded that day
+        if data["sleep"] and data["sleep"].get("dailySleepDTO", {}).get("sleepTimeSeconds"):
+            days_with_data += 1
+        elif data["hrv"] and data["hrv"].get("hrvSummary"):
+            days_with_data += 1
+        store.upsert_health(day, data)
+    return {"health_days_saved": days, "health_days_with_data": days_with_data}
+
+
 @app.post("/sync", dependencies=[Depends(require_api_key)])
 def sync(days: int = 3, max_details: int = 10) -> dict[str, Any]:
     """Daily sync: store the last few days' activities and fill in missing details."""
@@ -266,7 +292,11 @@ def sync(days: int = 3, max_details: int = 10) -> dict[str, Any]:
         end = date.today()
         start = end - timedelta(days=days - 1)
         saved = store.upsert_summaries(client.get_activities_by_date(start.isoformat(), end.isoformat()))
-        return {"activities_saved": saved, **sync_details(client, store, max_details)}
+        return {
+            "activities_saved": saved,
+            **sync_details(client, store, max_details),
+            **sync_health(client, store, end, days),
+        }
 
     return run_sync(work)
 
@@ -293,3 +323,14 @@ def sync_details_endpoint(max_details: int = 15) -> dict[str, Any]:
     if max_details < 1 or max_details > 50:
         raise HTTPException(status_code=400, detail="max_details must be between 1 and 50")
     return run_sync(lambda client, store: sync_details(client, store, max_details))
+
+
+@app.post("/sync/health", dependencies=[Depends(require_api_key)])
+def sync_health_endpoint(offset: int = 0, days: int = 14) -> dict[str, Any]:
+    """Store health data for `days` days, starting `offset` days before today and going back."""
+    if offset < 0 or offset > 3650:
+        raise HTTPException(status_code=400, detail="offset must be between 0 and 3650")
+    if days < 1 or days > 31:
+        raise HTTPException(status_code=400, detail="days must be between 1 and 31")
+    end = date.today() - timedelta(days=offset)
+    return run_sync(lambda client, store: sync_health(client, store, end, days))

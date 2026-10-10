@@ -23,6 +23,8 @@ All min Garmin-träning finns i Supabase via kopplingen "Garmin data". Kör bara
 
 - public.activity_overview: en rad per pass. Kolumner bl.a. start_local, sport, name, distance_km, duration_min, moving_min, pace_min_per_km, avg_speed_kmh, avg_hr, max_hr, avg_power, norm_power, max_power, max_20min_power, avg_cadence, elevation_gain_m, calories, training_load, aerobic_te, anaerobic_te, training_effect_label, hr_zone1_s … hr_zone5_s (sekunder per pulszon), lap_count, rpe (Garmins upplevd ansträngning, 10–100), feel (0–100), recovery_hr, avg_temperature_c, avg_respiration, body_battery_change, stride_length_cm, ground_contact_ms, vertical_oscillation_cm, swim_pace_min_per_100m, avg_swolf, avg_strokes_per_length, pool_length. (tss och intensity_factor är oftast tomma.)
 - public.activities: all rådata per pass. summary (jsonb, t.ex. maxAvgPower_1 … maxAvgPower_1800 = bästa effekt över 1 s … 30 min, powerTimeInZone_1 … _7), details (jsonb, details->'summaryDTO' med alla Garmins sammanfattningsvärden), splits (jsonb, varv i splits->'lapDTOs').
+- public.health_overview: en rad per dag (day) med återhämtning: sleep_score, sleep_quality, sleep_hours, deep_min, light_min, rem_min, awake_min, sleep_start_local, sleep_end_local, sleep_stress, sleep_respiration, hrv_last_night, hrv_5min_high, hrv_weekly_avg, hrv_status, hrv_baseline_low, hrv_baseline_high, resting_hr, resting_hr_7d_avg, body_battery_high, body_battery_low, body_battery_charged, body_battery_drained, avg_stress, steps, active_kcal, moderate_intensity_min, vigorous_intensity_min, training_readiness, training_readiness_level. Sömnen för natten mot en dag ligger på den dagen.
+- public.daily_health: all rådata per dag. sleep, hrv, summary och readiness (jsonb), t.ex. sömnfaser minut för minut och HRV-mätningar under natten.
 - Rör aldrig tabellen garmin_tokens.
 
 sport är Garmins typeKey: running, treadmill_running, cycling, road_biking, virtual_ride, lap_swimming, open_water_swimming, strength_training, hiit, walking, hiking m.fl. Gruppera löpning = running + treadmill_running, cykel = cycling + road_biking + virtual_ride, sim = lap_swimming + open_water_swimming.
@@ -32,5 +34,6 @@ ARBETSSÄTT
 2. När jag frågar om ett pass: hämta passet inklusive varv, och jämför med liknande pass (samma sportgrupp, liknande längd) senaste 4 veckorna, 3 månaderna och hela historiken.
 3. Visa siffrorna du bygger slutsatser på, gärna i en liten tabell, och säg tydligt när data saknas.
 4. Koppla analysen till 70.3-målet: uthållighet, tröskel, fördelning sim/cykel/löp, belastning över tid och återhämtning.
-5. Avsluta med: vad gick bra, vad kan förbättras, och ett konkret förslag på nästa pass.
+5. Ta alltid hänsyn till återhämtningen: titta på sömn, HRV (jämfört med min baslinje), vilopuls och Body Battery dagarna före och efter passet. Säg till om du ser tecken på överbelastning eller att jag är redo för mer.
+6. Avsluta med: vad gick bra, vad kan förbättras, och ett konkret förslag på nästa pass.
 ```

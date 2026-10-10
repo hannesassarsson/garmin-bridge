@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import activity_store  # noqa: E402
+from garminconnect import GarminConnectNotFoundError  # noqa: E402
 import app as bridge  # noqa: E402
 
 AUTH = {"Authorization": "Bearer test-key"}
@@ -33,6 +34,7 @@ class FakeActivitiesApi:
 
     def __init__(self) -> None:
         self.rows: dict[int, dict] = {}
+        self.health: dict[str, dict] = {}
         self.fail = False
 
     def request(self, method, url, headers, timeout, params=None, json=None):
@@ -50,6 +52,10 @@ class FakeActivitiesApi:
 
         if self.fail:
             return Resp(500)
+        if method == "POST" and url.endswith("/daily_health"):
+            for row in json:
+                self.health.setdefault(row["day"], {}).update(row)
+            return Resp(201)
         if method == "POST":
             for row in json:
                 self.rows.setdefault(row["activity_id"], {}).update(row)
@@ -94,6 +100,24 @@ class FakeGarmin:
         FakeGarmin.calls.append("details")
         return {"summaryDTO": {"trainingStressScore": 50}}
 
+    def get_sleep_data(self, day):
+        FakeGarmin.calls.append("sleep")
+        if day < "2026-09-01":
+            return {"dailySleepDTO": {"sleepTimeSeconds": None}}
+        return {"dailySleepDTO": {"sleepTimeSeconds": 27000, "sleepScores": {"overall": {"value": 80}}}}
+
+    def get_hrv_data(self, day):
+        FakeGarmin.calls.append("hrv")
+        if day < "2026-09-01":
+            raise GarminConnectNotFoundError("no data")
+        return {"hrvSummary": {"lastNightAvg": 60}}
+
+    def get_user_summary(self, day):
+        return {"restingHeartRate": 48}
+
+    def get_training_readiness(self, day):
+        return [{"score": 70}]
+
     def get_activity_splits(self, activity_id):
         FakeGarmin.calls.append("splits")
         return {"lapDTOs": [{"distance": 1000}]}
@@ -128,7 +152,13 @@ def test_sync_requires_api_key(api):
 def test_daily_sync_saves_activities_and_details(api):
     resp = TestClient(bridge.app).post("/sync?days=3&max_details=10", headers=AUTH)
     assert resp.status_code == 200
-    assert resp.json() == {"activities_saved": 2, "details_synced": 2, "details_remaining": 0}
+    assert resp.json() == {
+        "activities_saved": 2,
+        "details_synced": 2,
+        "details_remaining": 0,
+        "health_days_saved": 3,
+        "health_days_with_data": 3,
+    }
     row = api.rows[120]
     assert "userRoles" not in row["summary"]
     assert row["start_time_gmt"].endswith("+00:00")
@@ -170,3 +200,27 @@ def test_storage_failure_returns_503(api):
 def test_sync_needs_supabase(api, monkeypatch):
     monkeypatch.delenv("SUPABASE_URL")
     assert TestClient(bridge.app).post("/sync", headers=AUTH).status_code == 503
+
+
+def test_daily_sync_saves_health(api, monkeypatch):
+    monkeypatch.setattr(bridge, "date", type("FixedDate", (bridge.date,), {"today": classmethod(lambda cls: bridge.date(2026, 10, 10))}))
+    TestClient(bridge.app).post("/sync?days=3", headers=AUTH)
+    assert sorted(api.health) == ["2026-10-08", "2026-10-09", "2026-10-10"]
+    day = api.health["2026-10-10"]
+    assert day["hrv"] == {"hrvSummary": {"lastNightAvg": 60}}
+    assert day["summary"] == {"restingHeartRate": 48}
+    assert day["readiness"] == [{"score": 70}]
+
+
+def test_health_backfill_handles_days_without_data(api, monkeypatch):
+    monkeypatch.setattr(bridge, "date", type("FixedDate", (bridge.date,), {"today": classmethod(lambda cls: bridge.date(2026, 10, 10))}))
+    client = TestClient(bridge.app)
+    recent = client.post("/sync/health?offset=0&days=14", headers=AUTH).json()
+    assert recent == {"health_days_saved": 14, "health_days_with_data": 14}
+    old = client.post("/sync/health?offset=60&days=14", headers=AUTH).json()
+    assert old == {"health_days_saved": 14, "health_days_with_data": 0}
+    assert api.health["2026-08-01"]["hrv"] is None  # 404 from Garmin stored as "no data"
+
+
+def test_health_backfill_validates_input(api):
+    assert TestClient(bridge.app).post("/sync/health?days=0", headers=AUTH).status_code == 400

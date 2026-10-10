@@ -6,9 +6,9 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "daily = last 3 days, backfill = full history"
+        description: "daily = last 3 days, backfill = full activity history, health = full sleep/HRV history"
         type: choice
-        options: [daily, backfill]
+        options: [daily, backfill, health]
         default: daily
 
 permissions:

@@ -1,4 +1,7 @@
-"""Garmin activities stored in Supabase (table public.activities).
+"""Garmin activities and daily health data stored in Supabase.
+
+Tables: public.activities (one row per activity) and public.daily_health
+(one row per day: sleep, HRV, daily summary, training readiness).
 
 Uses the same SUPABASE_URL / SUPABASE_SECRET_KEY as the token store. The full
 Garmin JSON is kept so no data is lost; the view public.activity_overview
@@ -12,6 +15,7 @@ from typing import Any
 import requests
 
 _TABLE = "activities"
+_HEALTH_TABLE = "daily_health"
 
 # Fields in Garmin's activity list that only describe account permissions.
 _DROPPED_SUMMARY_KEYS = {"userRoles"}
@@ -30,7 +34,7 @@ def _start_time_gmt(summary: dict[str, Any]) -> str | None:
 
 class SupabaseActivityStore:
     def __init__(self, url: str, secret_key: str, timeout: float = 30) -> None:
-        self._endpoint = f"{url.rstrip('/')}/rest/v1/{_TABLE}"
+        self._base = f"{url.rstrip('/')}/rest/v1"
         self._headers = {"apikey": secret_key, "Content-Type": "application/json"}
         self._timeout = timeout
 
@@ -41,11 +45,17 @@ class SupabaseActivityStore:
             return None
         return cls(url, key)
 
-    def _request(self, method: str, extra_headers: dict[str, str] | None = None, **kwargs: Any) -> requests.Response:
+    def _request(
+        self,
+        method: str,
+        extra_headers: dict[str, str] | None = None,
+        table: str = _TABLE,
+        **kwargs: Any,
+    ) -> requests.Response:
         try:
             resp = requests.request(
                 method,
-                self._endpoint,
+                f"{self._base}/{table}",
                 headers={**self._headers, **(extra_headers or {})},
                 timeout=self._timeout,
                 **kwargs,
@@ -103,4 +113,14 @@ class SupabaseActivityStore:
                 "splits": splits,
                 "details_synced_at": datetime.now(timezone.utc).isoformat(),
             },
+        )
+
+    def upsert_health(self, day: str, data: dict[str, Any]) -> None:
+        """Insert or update one day of health data (keys: sleep, hrv, summary, readiness)."""
+        self._request(
+            "POST",
+            {"Prefer": "resolution=merge-duplicates,return=minimal"},
+            table=_HEALTH_TABLE,
+            params={"on_conflict": "day"},
+            json=[{"day": day, **data, "synced_at": datetime.now(timezone.utc).isoformat()}],
         )

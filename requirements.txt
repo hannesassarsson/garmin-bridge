@@ -2,3 +2,4 @@ fastapi==0.115.6
 uvicorn[standard]==0.34.0
 garminconnect==0.3.17
 curl_cffi
+cryptography==50.0.1

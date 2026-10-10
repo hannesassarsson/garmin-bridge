@@ -3,10 +3,9 @@ name: Garmin sync
 on:
   schedule:
     - cron: "17 4 * * *" # every day 04:17 UTC (06:17 Swedish summer time)
-    # Fresh data for the 07:00 morning check. GitHub cron is UTC only, so one
-    # run per season: 06:30 local in summer time, 06:30 local in winter time.
-    - cron: "30 4 * * *" # 06:30 CEST / 05:30 CET
-    - cron: "30 5 * * *" # 07:30 CEST / 06:30 CET
+    # Keeps a run at 06:17 Swedish time in winter too (GitHub cron is UTC only),
+    # so last night's data is in before the morning check just before 07:00.
+    - cron: "17 5 * * *" # 05:17 UTC (06:17 Swedish winter time)
   workflow_dispatch:
     inputs:
       mode:

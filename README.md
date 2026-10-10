@@ -7,6 +7,9 @@ A small, read-only FastAPI bridge for Garmin Connect.
 - `GET /` — public service health check
 - `GET /health/today` — today's Garmin summary (requires API key)
 - `GET /activities?days=7` — activities from the last 1–30 days (requires API key)
+- `POST /sync?days=3` — store the last days' activities in Supabase and fill in missing details/laps (requires API key)
+- `POST /sync/backfill?start=0&limit=50` — store one page of the full activity history (requires API key)
+- `POST /sync/details?max_details=15` — fill in details/laps for stored activities (requires API key)
 - `GET /auth/status` — token storage status; never contacts Garmin, safe to call any time (requires API key)
 
 For the protected endpoints, send this HTTP header:
@@ -34,6 +37,12 @@ Render Free has no persistent disk, so Garmin session tokens are stored in a pri
 Free Supabase projects are paused after a week without activity; the bridge then returns 503 until the project is restored in the Supabase dashboard.
 
 **Important:** Render Free web services have an ephemeral filesystem and do not support persistent disks. Without persistent storage, saved Garmin tokens can be lost when the service restarts or spins down, and a fresh login may be needed. Repeated logins can trigger Garmin rate limits (HTTP 429). This code deliberately does not automatically retry a failed login. Do not repeatedly test the protected endpoints after an authentication failure.
+
+## Activity sync
+
+Activities are stored in the Supabase table `activities` (`supabase/activities.sql`): the full Garmin JSON for each activity plus details and laps. The view `activity_overview` shows the most useful fields (sport, distance, duration, heart rate, power, training load, HR zones…) as plain columns for analysis.
+
+The GitHub Actions workflow `.github/workflows/garmin-sync.yml` runs the daily sync automatically every morning. To load the full history once, open **Actions → Garmin sync → Run workflow** and choose `backfill`. The workflow needs the repository secret `BRIDGE_API_KEY` (Settings → Secrets and variables → Actions). Sync requests are never retried automatically, and Garmin requests are spaced out (`SYNC_REQUEST_DELAY_SECONDS`, default 1 s).
 
 ## Tests
 

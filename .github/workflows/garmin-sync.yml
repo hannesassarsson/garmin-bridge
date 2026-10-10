@@ -1,0 +1,39 @@
+name: Garmin sync
+
+on:
+  schedule:
+    - cron: "17 4 * * *" # every day 04:17 UTC (06:17 Swedish summer time)
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "daily = last 3 days, backfill = full history"
+        type: choice
+        options: [daily, backfill]
+        default: daily
+
+permissions:
+  contents: read
+
+concurrency:
+  group: garmin-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      BRIDGE_URL: https://garmin-bridge-og07.onrender.com
+    steps:
+      - uses: actions/checkout@v4
+
+      # Render Free sleeps when idle. Waking it only hits the public "/" route,
+      # which never contacts Garmin, so retrying here is safe.
+      - name: Wake up bridge
+        run: curl -fsS --retry 6 --retry-delay 20 --retry-all-errors --max-time 120 "$BRIDGE_URL/" > /dev/null
+
+      - name: Sync activities
+        env:
+          BRIDGE_API_KEY: ${{ secrets.BRIDGE_API_KEY }}
+          MODE: ${{ inputs.mode || 'daily' }}
+        run: python3 scripts/run_sync.py "$MODE"

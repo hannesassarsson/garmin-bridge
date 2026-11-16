@@ -254,8 +254,35 @@ def run_sync(work) -> dict[str, Any]:
         persist_tokens()
 
 
+def fetch_metrics(client: Garmin, day: str) -> dict[str, Any]:
+    """Slow-changing fitness metrics for one day: VO2 max, training status, endurance, race predictions.
+
+    Each one is optional: if Garmin has no data or the call fails, it is stored as null
+    and the rest of the sync continues. Only the error type is logged.
+    """
+    fetchers = {
+        "max_metrics": lambda: client.get_max_metrics(day),
+        "training_status": lambda: client.get_training_status(day),
+        "endurance_score": lambda: client.get_endurance_score(day),
+        "race_predictions": lambda: client.get_race_predictions(),
+    }
+    metrics: dict[str, Any] = {}
+    for key, fetch in fetchers.items():
+        time.sleep(SYNC_REQUEST_DELAY_SECONDS)
+        try:
+            metrics[key] = fetch() or None
+        except Exception as exc:  # noqa: BLE001 - extra metrics must never break the sync
+            if not isinstance(exc, GarminConnectNotFoundError):
+                logger.warning("Could not fetch %s (%s)", key, type(exc).__name__)
+            metrics[key] = None
+    return metrics
+
+
 def sync_health(client: Garmin, store: SupabaseActivityStore, end: date, days: int) -> dict[str, int]:
-    """Store sleep, HRV, daily summary and training readiness for `days` days ending at `end`."""
+    """Store sleep, HRV, daily summary and training readiness for `days` days ending at `end`.
+
+    When `end` is today, today's row also gets fitness metrics (see fetch_metrics).
+    """
     fetchers = {
         "sleep": client.get_sleep_data,
         "hrv": client.get_hrv_data,
@@ -272,6 +299,8 @@ def sync_health(client: Garmin, store: SupabaseActivityStore, end: date, days: i
                 data[key] = fetch(day) or None
             except GarminConnectNotFoundError:
                 data[key] = None  # no data recorded that day
+        if offset == 0 and end == date.today():
+            data["metrics"] = fetch_metrics(client, day)
         if data["sleep"] and data["sleep"].get("dailySleepDTO", {}).get("sleepTimeSeconds"):
             days_with_data += 1
         elif data["hrv"] and data["hrv"].get("hrvSummary"):

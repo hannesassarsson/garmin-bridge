@@ -116,7 +116,7 @@ class SupabaseActivityStore:
         )
 
     def upsert_health(self, day: str, data: dict[str, Any]) -> None:
-        """Insert or update one day of health data (keys: sleep, hrv, summary, readiness)."""
+        """Insert or update one day of health data (keys: sleep, hrv, summary, readiness, optional metrics)."""
         self._request(
             "POST",
             {"Prefer": "resolution=merge-duplicates,return=minimal"},

@@ -118,6 +118,19 @@ class FakeGarmin:
     def get_training_readiness(self, day):
         return [{"score": 70}]
 
+    def get_max_metrics(self, day):
+        FakeGarmin.calls.append("max_metrics")
+        return [{"generic": {"vo2MaxPreciseValue": 52.3}}]
+
+    def get_training_status(self, day):
+        raise RuntimeError("Garmin changed something")
+
+    def get_endurance_score(self, day):
+        raise GarminConnectNotFoundError("no data")
+
+    def get_race_predictions(self):
+        return {"timeHalfMarathon": 6900}
+
     def get_activity_splits(self, activity_id):
         FakeGarmin.calls.append("splits")
         return {"lapDTOs": [{"distance": 1000}]}
@@ -224,3 +237,24 @@ def test_health_backfill_handles_days_without_data(api, monkeypatch):
 
 def test_health_backfill_validates_input(api):
     assert TestClient(bridge.app).post("/sync/health?days=0", headers=AUTH).status_code == 400
+
+
+FixedDate = type("FixedDate", (bridge.date,), {"today": classmethod(lambda cls: bridge.date(2026, 10, 10))})
+
+def test_daily_sync_saves_metrics_for_today_only(api, monkeypatch):
+    monkeypatch.setattr(bridge, "date", FixedDate)
+    TestClient(bridge.app).post("/sync?days=3", headers=AUTH)
+    today = api.health["2026-10-10"]["metrics"]
+    assert today["max_metrics"][0]["generic"]["vo2MaxPreciseValue"] == 52.3
+    assert today["race_predictions"] == {"timeHalfMarathon": 6900}
+    assert today["training_status"] is None  # a failing metric is stored as null, sync continues
+    assert today["endurance_score"] is None
+    assert "metrics" not in api.health["2026-10-09"]
+    assert FakeGarmin.calls.count("max_metrics") == 1
+
+
+def test_health_backfill_skips_metrics(api, monkeypatch):
+    monkeypatch.setattr(bridge, "date", FixedDate)
+    TestClient(bridge.app).post("/sync/health?offset=30&days=2", headers=AUTH)
+    assert all("metrics" not in row for row in api.health.values())
+    assert "max_metrics" not in FakeGarmin.calls

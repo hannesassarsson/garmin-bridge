@@ -7,8 +7,11 @@ create table if not exists public.daily_health (
   hrv jsonb,         -- get_hrv_data: hrvSummary (last night, weekly average, status, baseline)
   summary jsonb,     -- get_user_summary: resting HR, Body Battery, stress, steps, ...
   readiness jsonb,   -- get_training_readiness: list of readiness scores for the day
+  metrics jsonb,     -- today only: max_metrics (VO2 max), training_status, endurance_score, race_predictions
   synced_at timestamptz not null default now()
 );
+
+alter table public.daily_health add column if not exists metrics jsonb;
 
 alter table public.daily_health enable row level security;
 revoke all on table public.daily_health from anon, authenticated;
